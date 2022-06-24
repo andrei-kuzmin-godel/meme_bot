@@ -3,6 +3,7 @@ require('dotenv').config();
 const express = require('express');
 const bodyParser = require('body-parser');
 const axios = require('axios');
+const getNumberOfMemesRequested = require('./getNumberOfMemesRequested');
 
 const { TELEGRAM_TOKEN, SERVER_URL, TELEGRAM_API, WEBHOOK_ID, WEBHOOK_TOKEN, MEME_API } = process.env;
 const TELEGRAM_BOT_URL = `${TELEGRAM_API}/bot${TELEGRAM_TOKEN}`;
@@ -19,11 +20,11 @@ const setWebhookUrl = async () => {
   console.log(result.data);
 }
 
-const getRandomMemeUrl = async () => {
-  const meme = await axios.get(`${MEME_API}/gimme`);
-  const previews = meme.data.preview;
+const getRandomMemeUrls = async (numberOfMemesRequested) => {
+  const memesRaw = await axios.get(`${MEME_API}/gimme/${numberOfMemesRequested}`);
+  const memesArray = memesRaw.data.memes;
 
-  return previews[previews.length - 1];
+  return memesArray.map(meme => meme.preview[meme.preview.length - 1]);
 }
 
 const sendPhoto = async (chatId, photo) => {
@@ -33,6 +34,10 @@ const sendPhoto = async (chatId, photo) => {
   })
 }
 
+const sendPhotos = async (chatId, photos) => {
+  await Promise.all(photos.map(photo => sendPhoto(chatId, photo)));
+}
+
 app.listen(5000, async () => {
   console.log('app is running');
   await setWebhookUrl();
@@ -40,9 +45,11 @@ app.listen(5000, async () => {
 
 app.post(WEBHOOK_URI, async (req, res) => {
   const chatId = req.body.message.chat.id;
-
-  const memeUrl = await getRandomMemeUrl();
-  await sendPhoto(chatId, memeUrl);
+  const receivedMessage = req.body?.message?.text;
+  const numberOfMemesRequested = getNumberOfMemesRequested(receivedMessage)
+  
+  const memeUrls = await getRandomMemeUrls(numberOfMemesRequested);
+  await sendPhotos(chatId, memeUrls);
 
   return res.send();
 })
